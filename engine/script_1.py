@@ -7,6 +7,7 @@ import os
 import xlsxwriter
 import PySimpleGUI as sg
 import time
+from datetime import date
 from datetime import datetime
 from selenium import webdriver
 from selenium.webdriver.common.by import By
@@ -179,14 +180,37 @@ for category_name in all_categories_dict.keys():
                     #https://tula.elfgroup.ru/catalog/zapornaya-i-reguliruyushchaya-armutura/krany/?&PAGEN_1=2
 
     category_number += 1
+    
+current_date = date.today()
+json_vendor = df_vendors.to_json(orient="table")
+
+with open("Data/ELF.json", "w", encoding = "utf-8") as file:
+    file.write(json_vendor)
+    
+sheet_name = 'Sheet_1'
+
+with pd.ExcelWriter(
+        f"Data/Output/ELF_{current_date}.xlsx",
+        engine="xlsxwriter",
+        mode='w') as writer:
+
+    df_vendors.to_excel(writer, sheet_name=sheet_name, index=False)
+    workbook = writer.book
+    link_format = workbook.add_format({  # type: ignore
+                            'font_color': 'blue',
+                            'underline': 1,
+                            'valign': 'top',
+                            'text_wrap': True,
+                        })
+    writer.sheets[sheet_name].set_column('D:D', None, link_format)
 
 
+end_time = time.time()  # время окончания выполнения
+execution_time = end_time - start_time  # вычисляем время выполнения
+print("Сбор данных завершен")
+print(f"Время выполнения программы: {execution_time} секунд")
+time.sleep(3)
 
-
-
-
-
-#time.sleep(5)
 end_time = time.time()
 execution_time = start_time - end_time
 print(execution_time)
