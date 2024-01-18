@@ -23,8 +23,10 @@ vendor_dict = {"Vendor":[],
                        "Price":[],
                        "Reference":[],
                        "Category_Name":[],
-                       "Sub_category_1":[]}
+                       "Sub_category_1":[],
+                       "Sub_category_2":[]}
 df_vendors = pd.DataFrame(vendor_dict)
+
 # данные запроса браузера
 timeout = 10
 headers = {
@@ -33,6 +35,17 @@ headers = {
 }
 
 ##### БЛОК ФУНКЦИЙ #####
+
+def get_html(url):
+    while True:
+        try:
+            req = requests.get(url= url, headers=headers, timeout=timeout)
+            return req.text if req.status_code == 200 else False
+        except Exception:
+            #return False
+            continue
+
+#####
 
 def create_and_write_all_categories_dict(name_dict, cat_list, url, div_class):
     for item in cat_list:
@@ -76,11 +89,30 @@ def check_page_count(soup, tag_class):
     else:
         return None
 
+def loc_index_df(list):
+    vendor_count = 0
+    for item in list:
+        vendor_href =URL + item.find('td', class_ = 'products-list-item-info').find('div', class_ = 'products-list-item-title').find('div', class_ = 'products-list-item-name').find('a').get('href')
+        vendor_name = item.find('div', class_ = 'products-list-item-name').find('a').text.strip()
+        vendor = item.find('div', class_ = 'code-container').text.strip()
+        if vendor.find('\n') != -1:
+            vendor = vendor[:vendor.find('\n')]
+        vendor_req = get_html(vendor_href) #requests.get(vendor_href, headers=headers, timeout=timeout).text
+        vendor_soup = BeautifulSoup(vendor_req, 'lxml')
+        vendor_price = vendor_soup.find('div', class_ = 'd-none').find('meta', {'itemprop':'price'}).get('content')
+        if vendor_price != '':
+            vendor_price = float(vendor_price)
+        df_vendors.loc[len(df_vendors.index)]=[vendor, vendor_name, vendor_price, vendor_href, category_name, sub_category_name, sub_section_name]
+        vendor_count += 1
+    print(df_vendors)
+    print(f'В категории {category_name}: {sub_category_name}, {sub_section_name} собрано {vendor_count} позиций(ии)')
+
 #####
 ##### БЛОК ФУНКЦИЙ ##### 
 
 # исходный сайт, который будем парсить( продумать запуск inputom)
-req = requests.get('https://tula.elfgroup.ru/#/tab-catalog-overview', timeout= timeout).text
+
+req = get_html('https://tula.elfgroup.ru/#/tab-catalog-overview')
 src = req
 
 with open('Data/index.html', 'w', encoding= 'utf-8') as file:
@@ -103,7 +135,9 @@ with open('Data/all_categories_dict.json', 'w', encoding= 'utf-8') as file:
 with open('Data/all_categories_dict.json', encoding='utf-8') as file:
     all_categories_dict = json.load(file)
 
+
 category_count = 0
+
 for category_name, category_href in all_categories_dict.items():
     if category_count <= len(all_categories_dict):
         sub_category_div = create_soup_tag_list(category_href, 'div', 'sub-sections__item')
@@ -115,8 +149,8 @@ for category_name, category_href in all_categories_dict.items():
         else:
             for item in sub_category_div:
                 sub_category_name = item.text.strip()#, class_='sub-sections__title '
-                sub_category_ref = URL + item.find('a').get('href')#, class_='sub-sections__title '
-                sub_category_dict[sub_category_name]=sub_category_ref
+                sub_section_ref = URL + item.find('a').get('href')#, class_='sub-sections__title '
+                sub_category_dict[sub_category_name]=sub_section_ref
         with open(f'Data/Sub_categories/{category_count}_{category_name}/{category_name}_sub_categories.json', 'w', encoding= 'utf-8') as file:
             json.dump(sub_category_dict, file, indent = 4, ensure_ascii=False)
         #with open(f'Data/Sub_categories/{category_count}_{category_name}/{category_name}_sub_categories.json', encoding= 'utf-8') as file:
@@ -128,28 +162,60 @@ for category_name in all_categories_dict.keys():
     with open(f'Data/Sub_categories/{category_number}_{category_name}/{category_name}_sub_categories.json', encoding= 'utf-8') as file:
         sub_category_dict = json.load(file)
     for sub_category_name, sub_category_ref in sub_category_dict.items():
-        req = requests.get(sub_category_ref, headers=headers, timeout=timeout).text
+        vendor_count = 0
+        req = get_html(sub_category_ref) #requests.get(sub_category_ref, headers=headers, timeout=timeout).text
         sub_cat_soup = BeautifulSoup(req, 'lxml')
-        sub_section_div = sub_cat_soup.find('div', class_ = 'sub-sections__container')
+        sub_section_div = None #sub_cat_soup.find('div', class_ = 'sub-sections__container')
         if sub_section_div is not None:
             name_sect = sub_cat_soup.find_all('div', class_ = 'sub-sections__item')
             #print(f'{sub_category_name} : {len(name_sect)} категорий')
-            
+            sub_section_dict = {}
+            for item in name_sect:
+                item_href =URL + item.find('a').get('href')
+                item_name = item.text.strip()
+                sub_section_dict[item_name] = item_href
+            for sub_section_name, sub_section_ref in sub_section_dict.items():
+                req = get_html(sub_section_ref)
+                sub_cat_soup = BeautifulSoup(req, 'lxml')
+                page_count = check_page_count(sub_cat_soup, 'maximaster-nav-string')
+                if page_count == None:
+                    vendor_table = sub_cat_soup.find('table', class_ = 'products-list')
+                    vendor_list = vendor_table.find_all('tr', class_ = 'products-list-item')
+                    loc_index_df(vendor_list)
+
+                else:
+                    current_page = 1
+                                
+                    while current_page <= int(page_count):
+                                    
+                        vendor_table = sub_cat_soup.find('table', class_ = 'products-list')
+                        vendor_list = vendor_table.find_all('tr', class_ = 'products-list-item')
+                        loc_index_df(vendor_list)
+                        sub_section_ref = f'{sub_section_ref}?&PAGEN_1={current_page}'
+                        req = get_html(sub_section_ref)
+                        sub_cat_soup = BeautifulSoup(req, 'lxml')
+
+            sub_section_dict.clear()
         else:
+            sub_section_name = ''
             #print(f'{sub_category_name} не имеет подкатегорий')
             page_count = check_page_count(sub_cat_soup, 'maximaster-nav-string')
             if page_count == None:
                 vendor_table = sub_cat_soup.find('table', class_ = 'products-list')
                 vendor_list = vendor_table.find_all('tr', class_ = 'products-list-item')
-                vendor_count = 0
+                #loc_index_df(vendor_list)
                 for item in vendor_list:
                     vendor_href =URL + item.find('td', class_ = 'products-list-item-info').find('div', class_ = 'products-list-item-title').find('div', class_ = 'products-list-item-name').find('a').get('href')
                     vendor_name = item.find('div', class_ = 'products-list-item-name').find('a').text.strip()
                     vendor = item.find('div', class_ = 'code-container').text.strip()
-                    vendor_req = requests.get(vendor_href, headers=headers, timeout=timeout).text
+                    if vendor.find('\n') != -1:
+                            vendor = vendor[:vendor.find('\n')]
+                    vendor_req = get_html(vendor_href) #requests.get(vendor_href, headers=headers, timeout=timeout).text
                     vendor_soup = BeautifulSoup(vendor_req, 'lxml')
-                    vendor_price = float(vendor_soup.find('div', class_ = 'd-none').find('meta', {'itemprop':'price'}).get('content'))
-                    df_vendors.loc[len(df_vendors.index)]=[vendor, vendor_name, vendor_price, vendor_href, category_name, sub_category_name]
+                    vendor_price = vendor_soup.find('div', class_ = 'd-none').find('meta', {'itemprop':'price'}).get('content')
+                    if vendor_price != '':
+                        vendor_price = float(vendor_price)
+                    df_vendors.loc[len(df_vendors.index)]=[vendor, vendor_name, vendor_price, vendor_href, category_name, sub_category_name, sub_section_name]
                     vendor_count += 1
                     print(df_vendors)
                 print(f'В категории {category_name}: {sub_category_name} собрано {vendor_count} позиций(ии)')
@@ -158,24 +224,28 @@ for category_name in all_categories_dict.keys():
                 
                 while current_page <= int(page_count):
                     
-                    vendor_count = 0
                     vendor_table = sub_cat_soup.find('table', class_ = 'products-list')
                     vendor_list = vendor_table.find_all('tr', class_ = 'products-list-item')
+                    #loc_index_df(vendor_list)
                     for item in vendor_list:
                         vendor_href =URL + item.find('td', class_ = 'products-list-item-info').find('div', class_ = 'products-list-item-title').find('div', class_ = 'products-list-item-name').find('a').get('href')
                         vendor_name = item.find('div', class_ = 'products-list-item-name').find('a').text.strip()
                         vendor = item.find('div', class_ = 'code-container').text.strip()
-                        vendor_req = requests.get(vendor_href, headers=headers, timeout=timeout).text
+                        if vendor.find('\n') != -1:
+                            vendor = vendor[:vendor.find('\n')]
+                        vendor_req = get_html(vendor_href) #requests.get(vendor_href, headers=headers, timeout=timeout).text
                         vendor_soup = BeautifulSoup(vendor_req, 'lxml')
-                        vendor_price = float(vendor_soup.find('div', class_ = 'd-none').find('meta', {'itemprop':'price'}).get('content'))
-                        df_vendors.loc[len(df_vendors.index)]=[vendor, vendor_name, vendor_price, vendor_href, category_name, sub_category_name]
+                        vendor_price = vendor_soup.find('div', class_ = 'd-none').find('meta', {'itemprop':'price'}).get('content')
+                        if vendor_price != '':
+                            vendor_price = float(vendor_price)
+                        df_vendors.loc[len(df_vendors.index)]=[vendor, vendor_name, vendor_price, vendor_href, category_name, sub_category_name, sub_section_name]
                         vendor_count += 1
                         print(df_vendors)
                     current_page +=1
                     sub_category_ref = f'{sub_category_ref}?&PAGEN_1={current_page}'
-                    req = requests.get(sub_category_ref, headers=headers, timeout=timeout).text
+                    req = get_html(sub_category_ref)
                     sub_cat_soup = BeautifulSoup(req, 'lxml')
-                print(f'В категории {category_name}: {sub_category_name} собрано {vendor_count} позиций(ии)')
+                    print(f'В категории {category_name}: {sub_category_name} собрано {vendor_count} позиций(ии)')
                     #https://tula.elfgroup.ru/catalog/zapornaya-i-reguliruyushchaya-armutura/krany/
                     #https://tula.elfgroup.ru/catalog/zapornaya-i-reguliruyushchaya-armutura/krany/?&PAGEN_1=2
 
@@ -210,7 +280,3 @@ execution_time = end_time - start_time  # вычисляем время выпо
 print("Сбор данных завершен")
 print(f"Время выполнения программы: {execution_time} секунд")
 time.sleep(3)
-
-end_time = time.time()
-execution_time = start_time - end_time
-print(execution_time)
