@@ -13,6 +13,15 @@ from selenium.webdriver.common.by import By
 from selenium.webdriver.support.ui import WebDriverWait
 from selenium.webdriver.support import expected_conditions as EC
 
+
+list = ['1', '2', '3, 2', '4']
+elt =str(list[len(list)-2:-1])
+print(elt)
+print(elt.find('2'))
+
+# ['3, 2']
+
+
 URL = "https://tula.elfgroup.ru"
 timeout = 10
 headers = {

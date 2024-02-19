@@ -2,10 +2,12 @@ from bs4 import BeautifulSoup
 import requests
 import json
 import pandas as pd
-import datetime as dt 
+import datetime as dt
+from datetime import date 
 import os
 import xlsxwriter
 import time
+from fake_useragent import UserAgent
 
 start_time = time.time()
 cur_dir = os.getcwd()
@@ -28,10 +30,9 @@ df_vendors = pd.DataFrame(vendor_dict)
 
 # данные запроса браузера
 timeout = 10
-headers = {
-    "Accept": "*/*",
-    "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
-}
+headers = {'User-Agent': UserAgent().random}
+#    "Accept": "*/*",
+#    "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36" 
 
 #   ************* FUNCTIONS BLOCK ****************
 
@@ -88,7 +89,7 @@ def check_page_count(soup, tag_class):
     else:
         return None
 
-# Функция 
+# Функция записи данных в DF
 def loc_index_df(list, category_name, sub_category_name, sub_section_name):
     vendor_count = 0
     for item in list:
@@ -99,12 +100,35 @@ def loc_index_df(list, category_name, sub_category_name, sub_section_name):
             vendor = vendor[:vendor.find('\n')]
         vendor_req = get_html(vendor_href) #requests.get(vendor_href, headers=headers, timeout=timeout).text
         vendor_soup = BeautifulSoup(vendor_req, 'lxml')
+            
+        ####
+        vendor_list_breadcrumbs = vendor_soup.find('div', class_ = 'breadcrumbs').find_all('a', itemprop = 'item')
+        for (index, _) in enumerate(vendor_list_breadcrumbs):
+            vendor_list_breadcrumbs[index] = vendor_list_breadcrumbs[index].text
+        sub_section_name = str(vendor_list_breadcrumbs[len(vendor_list_breadcrumbs)-2:-1])[2:-2]
+        ####
         vendor_price = vendor_soup.find('div', class_ = 'd-none').find('meta', {'itemprop':'price'}).get('content')
         if vendor_price != '':
             vendor_price = float(vendor_price)
         df_vendors.loc[len(df_vendors.index)]=[vendor, vendor_name, vendor_price, vendor_href, category_name, sub_category_name, sub_section_name]
         vendor_count += 1
 
+# Функция записи DF в Excel - файл (в дальнейшем нужно ввести input пути)
+def write_to_file(df):
+    sheet_name = 'Sheet_1'
+    with pd.ExcelWriter(f"Data/Output/ELF_{current_date}.xlsx",
+                    engine="xlsxwriter",
+                    mode='w') as writer:
+
+        df.to_excel(writer, sheet_name=sheet_name, index=False)
+        workbook = writer.book
+        link_format = workbook.add_format({  # type: ignore
+                                'font_color': 'blue',
+                                'underline': 1,
+                                'valign': 'top',
+                                'text_wrap': True,
+                            })
+        writer.sheets[sheet_name].set_column('D:D', None, link_format)
 
 #   ************* FUNCTIONS BLOCK ****************
 
@@ -168,38 +192,71 @@ for item in category_list:
         json.dump(sub_category_dict, file, indent=4, ensure_ascii=False)
     count_sub_categories += 1
 
-count_vendor = 1
-count_sub_categories = 1
-for key in category_dict:
-    sub_category_path = '\\'.join([data_dir, 'Sub_categories', f'{count_sub_categories}_{key}', f'{key}_категории.json'])
-    with open(sub_category_path, encoding='utf-8') as file:
-        sub_category_dict = json.load(file)
-    for item_name, item_ref in sub_category_dict.items():
-        req = get_html(item_ref)
-        soup = BeautifulSoup(req, 'lxml')
-        page_count = check_page_count(soup, 'maximaster-nav-string')
-        if page_count:
-            print('-')
-        else:
-            vendor_list = create_tag_list(soup, 'tr', 'products-list-item')
-            loc_index_df(vendor_list, key, item_name, None)
-            print(df_vendors)
-        print(f'в категории {key}, подкатегории {item_name} отобрано {page_count} страниц(ы)')
-    count_sub_categories += 1
+try:
+    count_vendor = 1
+    count_sub_categories = 1
+    for key in category_dict:
+        sub_category_path = '\\'.join([data_dir, 'Sub_categories', f'{count_sub_categories}_{key}', f'{key}_категории.json'])
+        with open(sub_category_path, encoding='utf-8') as file:
+            sub_category_dict = json.load(file)
+        for item_name, item_ref in sub_category_dict.items():
+            req = get_html(item_ref)
+            soup = BeautifulSoup(req, 'lxml')
+            page_count = check_page_count(soup, 'maximaster-nav-string')
+            if page_count:
+                current_page = 1
+                while current_page <= int(page_count):
+                    pagen_ref = item_ref + '?&PAGEN_1=' + str(current_page)
+                    req = get_html(pagen_ref)
+                    soup = BeautifulSoup(req, 'lxml')
+                    vendor_list = create_tag_list(soup, 'tr', 'products-list-item')
+                    loc_index_df(vendor_list, key, item_name, None)
+                    print(df_vendors)
+                    # ?&PAGEN_1=3
+                    current_page += 1
+            else:
+                vendor_list = create_tag_list(soup, 'tr', 'products-list-item')
+                loc_index_df(vendor_list, key, item_name, None)
+                print(df_vendors)
+            print(f'в категории {key}, подкатегории {item_name} отобрано {page_count} страниц(ы)')
+        count_sub_categories += 1
 
+    # Запись данных в Excel
+    current_date = date.today()
+    json_vendor = df_vendors.to_json(orient="table")
+    json_vendor_path = '\\'.join([data_dir, 'ELF.json'])
 
-""" 
-# Перебор циклом словаря категорий
-for item_name, item_ref in category_dict.items():
-    req = get_html(item_ref)
-    soup = BeautifulSoup(req, 'lxml')
-    sub_category_list = create_tag_list(soup, 'div', 'sub-sections__item')
-    sub_category_dict = {}
-    create_and_write_categories_dict(sub_category_dict, sub_category_list, URL)
-    sub_category_dict_path = '\\'.join([data_dir, 'Sub_categories', 'all_categories_dict.json'])
-    with open(sub_category_dict_path, 'w', encoding='utf-8') as file:
-        file.write(sub_category_dict)
+    with open(json_vendor_path, "w", encoding = "utf-8") as file:
+        file.write(json_vendor)
+except Exception:
+    print(f"Ошибка при обработке {key}: {item_name}")
+finally:
+    write_to_file(df_vendors)
+
+#####
 """
+sheet_name = 'Sheet_1'
+with pd.ExcelWriter(f"Data/Output/ELF_{current_date}.xlsx",
+                    engine="xlsxwriter",
+                    mode='w') as writer:
+
+    df_vendors.to_excel(writer, sheet_name=sheet_name, index=False)
+    workbook = writer.book
+    link_format = workbook.add_format({  # type: ignore
+                            'font_color': 'blue',
+                            'underline': 1,
+                            'valign': 'top',
+                            'text_wrap': True,
+                        })
+    writer.sheets[sheet_name].set_column('D:D', None, link_format)
+"""
+#####
+
+end_time = time.time()  # время окончания выполнения
+execution_time = end_time - start_time  # вычисляем время выполнения
+print("Сбор данных завершен")
+print(f"Время выполнения программы: {execution_time} секунд")
+time.sleep(3)
 
 #   ************* MAIN BLOCK *************
 
