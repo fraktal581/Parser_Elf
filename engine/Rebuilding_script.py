@@ -12,8 +12,10 @@ from fake_useragent import UserAgent
 start_time = time.time()
 cur_dir = os.getcwd()
 data_dir = '\\'.join([os.getcwd(), 'Data'])
+#URL = 'https://tula.elfgroup.ru'
 URL = 'https://tula.elfgroup.ru'
-URL_catalog = "https://tula.elfgroup.ru/catalog"
+#URL_catalog = "https://tula.elfgroup.ru/catalog"
+URL_catalog = 'https://tula.elfgroup.ru/catalog'
 #cur_dir = r'C:/Users/vorotintsev/Desktop/Parser_ELF'
 
 # инициализиер DF для записи итогового списка артикулов
@@ -23,13 +25,12 @@ vendor_dict = {
     "Price":[],
     "Reference":[],
     "Category_Name":[],
-    "Sub_category_1":[],
-    "Sub_category_2":[]
+    "Sub_category_1":[]
     }
 df_vendors = pd.DataFrame(vendor_dict)
 
 # данные запроса браузера
-timeout = 10
+timeout = 15
 headers = {'User-Agent': UserAgent().random}
 #    "Accept": "*/*",
 #    "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36" 
@@ -41,6 +42,7 @@ def get_html(url):
     while True:
         try:
             req = requests.get(url= url, headers=headers, timeout=timeout)
+            time.sleep(3)
             return req.text if req.status_code == 200 else False
         except Exception:
             #return False
@@ -96,21 +98,21 @@ def loc_index_df(list, category_name, sub_category_name, sub_section_name):
         vendor_href =URL + item.find('td', class_ = 'products-list-item-info').find('div', class_ = 'products-list-item-title').find('div', class_ = 'products-list-item-name').find('a').get('href')
         vendor_name = item.find('div', class_ = 'products-list-item-name').find('a').text.strip()
         vendor = item.find('div', class_ = 'code-container').text.strip()
+        vendor_price = item.find('div', class_ = 'item-final-price').text.strip()
         if vendor.find('\n') != -1:
             vendor = vendor[:vendor.find('\n')]
-        vendor_req = get_html(vendor_href) #requests.get(vendor_href, headers=headers, timeout=timeout).text
-        vendor_soup = BeautifulSoup(vendor_req, 'lxml')
-            
-        ####
-        vendor_list_breadcrumbs = vendor_soup.find('div', class_ = 'breadcrumbs').find_all('a', itemprop = 'item')
-        for (index, _) in enumerate(vendor_list_breadcrumbs):
-            vendor_list_breadcrumbs[index] = vendor_list_breadcrumbs[index].text
-        sub_section_name = str(vendor_list_breadcrumbs[len(vendor_list_breadcrumbs)-2:-1])[2:-2]
-        ####
-        vendor_price = vendor_soup.find('div', class_ = 'd-none').find('meta', {'itemprop':'price'}).get('content')
+#        vendor_req = get_html(vendor_href) #requests.get(vendor_href, headers=headers, timeout=timeout).text
+#        vendor_soup = BeautifulSoup(vendor_req, 'lxml')
+####
+#        vendor_list_breadcrumbs = vendor_soup.find('div', class_ = 'breadcrumbs').find_all('a', itemprop = 'item')
+#        for (index, _) in enumerate(vendor_list_breadcrumbs):
+#            vendor_list_breadcrumbs[index] = vendor_list_breadcrumbs[index].text
+#        sub_section_name = str(vendor_list_breadcrumbs[len(vendor_list_breadcrumbs)-2:-1])[2:-2]
+####
+#        vendor_price = vendor_soup.find('div', class_ = 'd-none').find('meta', {'itemprop':'price'}).get('content')
         if vendor_price != '':
             vendor_price = float(vendor_price)
-        df_vendors.loc[len(df_vendors.index)]=[vendor, vendor_name, vendor_price, vendor_href, category_name, sub_category_name, sub_section_name]
+        df_vendors.loc[len(df_vendors.index)]=[vendor, vendor_name, vendor_price, vendor_href, category_name, sub_category_name]
         vendor_count += 1
 
 # Функция записи DF в Excel - файл (в дальнейшем нужно ввести input пути)
