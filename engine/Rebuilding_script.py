@@ -1,4 +1,5 @@
 from bs4 import BeautifulSoup
+from selenium import webdriver as wd
 import requests
 import json
 import pandas as pd
@@ -7,6 +8,7 @@ from datetime import date
 import os
 import xlsxwriter
 import time
+import numpy as np
 from fake_useragent import UserAgent
 
 start_time = time.time()
@@ -25,15 +27,28 @@ vendor_dict = {
     "Price":[],
     "Reference":[],
     "Category_Name":[],
-    "Sub_category_1":[]
+    "Sub_category_1":[],
+    "Sub_category_2":[]
     }
 df_vendors = pd.DataFrame(vendor_dict)
 
 # данные запроса браузера
 timeout = 15
-headers = {'User-Agent': UserAgent().random}
-#    "Accept": "*/*",
-#    "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36" 
+headers = { "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8,application/signed-exchange;v=b3;q=0.7",
+            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/123.0.0.0 Safari/537.36" }
+
+
+""" options = wd.ChromeOptions()
+options.add_argument("user-agent=Mozilla/5.0 (Windows NT 10.0; Win64; x64) "\
+    "AppleWebKit/537.36 (KHTML, like Gecko) "\
+    "Chrome/61.0.3163.100 Safari/537.36")
+options.add_argument("--disable-blink-features")
+options.add_argument('--disable-blink-features=AutomationControlled') 
+
+driver = wd.Chrome(options=options)
+driver.execute_script("Object.defineProperty(navigator, 'webdriver', {get: () => undefined})") """
+
+
 
 #   ************* FUNCTIONS BLOCK ****************
 
@@ -41,8 +56,9 @@ headers = {'User-Agent': UserAgent().random}
 def get_html(url):
     while True:
         try:
+            #req = driver.get(url) #, headers=headers, timeout=timeout)
             req = requests.get(url= url, headers=headers, timeout=timeout)
-            time.sleep(3)
+            time.sleep((5-2) * np.random.random()+2)
             return req.text if req.status_code == 200 else False
         except Exception:
             #return False
@@ -72,7 +88,8 @@ def create_tag_list(soup, tag, class_tag):
 
 # Функция проверяет существует ли папка с указанным именем, если нет, создает новую
 def check_and_create_folder(name_dir, cur_dir):
-    if os.path.isdir(f'C:\\Users\\vorotintsev\\Desktop\\Parser_ELF\\Data\\Sub_categories\\{name_dir}') == False:
+
+    if os.path.isdir(f'{data_dir}\\Sub_categories\\{name_dir}') == False:
         dir_and_file_name = 'Sub_categories\\' + name_dir
         path = os.path.join(cur_dir, dir_and_file_name)
         os.mkdir(path)
@@ -98,21 +115,21 @@ def loc_index_df(list, category_name, sub_category_name, sub_section_name):
         vendor_href =URL + item.find('td', class_ = 'products-list-item-info').find('div', class_ = 'products-list-item-title').find('div', class_ = 'products-list-item-name').find('a').get('href')
         vendor_name = item.find('div', class_ = 'products-list-item-name').find('a').text.strip()
         vendor = item.find('div', class_ = 'code-container').text.strip()
-        vendor_price = item.find('div', class_ = 'item-final-price').text.strip()
+        #vendor_price = item.find('div', class_ = 'item-final-price').text.strip()
         if vendor.find('\n') != -1:
             vendor = vendor[:vendor.find('\n')]
-#        vendor_req = get_html(vendor_href) #requests.get(vendor_href, headers=headers, timeout=timeout).text
-#        vendor_soup = BeautifulSoup(vendor_req, 'lxml')
+        vendor_req = get_html(vendor_href) #requests.get(vendor_href, headers=headers, timeout=timeout).text
+        vendor_soup = BeautifulSoup(vendor_req, 'lxml')
 ####
-#        vendor_list_breadcrumbs = vendor_soup.find('div', class_ = 'breadcrumbs').find_all('a', itemprop = 'item')
-#        for (index, _) in enumerate(vendor_list_breadcrumbs):
-#            vendor_list_breadcrumbs[index] = vendor_list_breadcrumbs[index].text
-#        sub_section_name = str(vendor_list_breadcrumbs[len(vendor_list_breadcrumbs)-2:-1])[2:-2]
+        vendor_list_breadcrumbs = vendor_soup.find('div', class_ = 'breadcrumbs').find_all('a', itemprop = 'item')
+        for (index, _) in enumerate(vendor_list_breadcrumbs):
+            vendor_list_breadcrumbs[index] = vendor_list_breadcrumbs[index].text
+        sub_section_name = str(vendor_list_breadcrumbs[len(vendor_list_breadcrumbs)-2:-1])[2:-2]
 ####
-#        vendor_price = vendor_soup.find('div', class_ = 'd-none').find('meta', {'itemprop':'price'}).get('content')
+        vendor_price = vendor_soup.find('div', class_ = 'd-none').find('meta', {'itemprop':'price'}).get('content')
         if vendor_price != '':
             vendor_price = float(vendor_price)
-        df_vendors.loc[len(df_vendors.index)]=[vendor, vendor_name, vendor_price, vendor_href, category_name, sub_category_name]
+        df_vendors.loc[len(df_vendors.index)]=[vendor, vendor_name, vendor_price, vendor_href, category_name, sub_category_name, sub_section_name]
         vendor_count += 1
 
 # Функция записи DF в Excel - файл (в дальнейшем нужно ввести input пути)
@@ -214,6 +231,7 @@ try:
                     vendor_list = create_tag_list(soup, 'tr', 'products-list-item')
                     loc_index_df(vendor_list, key, item_name, None)
                     print(df_vendors)
+                    time.sleep(1)
                     # ?&PAGEN_1=3
                     current_page += 1
             else:
@@ -232,8 +250,9 @@ try:
         file.write(json_vendor)
 except Exception:
     print(f"Ошибка при обработке {key}: {item_name}")
-finally:
-    write_to_file(df_vendors)
+#finally:
+    
+write_to_file(df_vendors)
 
 #####
 """
