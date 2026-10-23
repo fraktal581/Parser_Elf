@@ -9,7 +9,7 @@ import os
 import xlsxwriter
 import time
 import numpy as np
-from fake_useragent import UserAgent
+#from fake_useragent import UserAgent
 
 start_time = time.time()
 cur_dir = os.getcwd()
@@ -34,8 +34,15 @@ df_vendors = pd.DataFrame(vendor_dict)
 
 # данные запроса браузера
 timeout = 15
-headers = { "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8,application/signed-exchange;v=b3;q=0.7",
+"""headers = { "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8,application/signed-exchange;v=b3;q=0.7",
             "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/123.0.0.0 Safari/537.36" }
+"""
+headers = {
+    "User-Agent": "...",
+    "Accept-Language": "ru-RU,ru;q=0.9",
+    "Accept": "text/html,application/xhtml+xml",
+    "Connection": "keep-alive"
+}
 
 
 """ options = wd.ChromeOptions()
@@ -80,11 +87,7 @@ def create_and_write_categories_dict(class_tag, name_dict, cat_list, url):
 
 # функция сбора списка тэгов
 def create_tag_list(soup, tag, class_tag):
-    result = soup.find_all (tag, class_ = class_tag)
-    if result:
-        return result
-    else:
-        return False
+    return soup.find_all(tag, class_=class_tag)
 
 # Функция проверяет существует ли папка с указанным именем, если нет, создает новую
 def check_and_create_folder(name_dir, cur_dir):
@@ -135,6 +138,7 @@ def loc_index_df(list, category_name, sub_category_name, sub_section_name):
 # Функция записи DF в Excel - файл (в дальнейшем нужно ввести input пути)
 def write_to_file(df):
     sheet_name = 'Sheet_1'
+    current_date = date.today()
     with pd.ExcelWriter(f"Data/Output/ELF_{current_date}.xlsx",
                     engine="xlsxwriter",
                     mode='w') as writer:
@@ -176,9 +180,10 @@ with open(index_file_path, encoding='utf-8') as file:
     src = file.read()
 
 # собираем список div-контейнеров, содержащих ссылки на категории
-soup = BeautifulSoup(src, 'lxml')
-category_list = create_tag_list(soup, 'div', 'main-sections__wrapper')
-
+soup = BeautifulSoup(src, 'html.parser')
+category_list = create_tag_list(soup, 'div', 'main-sections__wrapper') #sub-sections__wrapper main-sub-sections / main-sections__wrapper
+if len(category_list) == 0:
+    print('Теги не собраны')
 # создаем словарь "категория: ссылка", записываем в файл .json
 category_dict={}
 create_and_write_categories_dict(0, name_dict=category_dict, cat_list=category_list, url=URL)
