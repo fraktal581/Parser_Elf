@@ -1,0 +1,8 @@
+# Данные (кроме справочника категорий)
+Data/*
+!Data/categories.json
+
+# Виртуальное окружение и кэш Python
+.venv/
+__pycache__/
+*.pyc
